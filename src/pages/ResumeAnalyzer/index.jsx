@@ -72,7 +72,7 @@ const ResumeAnalyzer = () => {
       if (result.data && typeof result.data === 'string' && result.data.trim()) {
         setAtsAnalysis(result.data);
         setResumeId('analyzed');
-        toast.success('Resume analyzed successfully with Groq AI');
+        toast.success('Resume analyzed successfully');
       } else {
         console.error('Invalid response format:', result);
         throw new Error('Invalid response format from server');
