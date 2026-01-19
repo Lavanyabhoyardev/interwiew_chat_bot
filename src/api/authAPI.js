@@ -1,22 +1,23 @@
+import { fetchJson, tokenStorage } from './http.js';
+
 export async function login(email, password) {
-  const res = await fetch('/api/auth/login', {
+  const data = await fetchJson('/api/auth/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: { email, password }
   });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Login failed');
+
+  if (!data?.success) {
+    throw new Error(data?.message || 'Login failed');
   }
-  // Store token
-  localStorage.setItem('auth_token', data.token);
+
+  tokenStorage.set(data.token);
   return data;
 }
 
 export function getStoredToken() {
-  return localStorage.getItem('auth_token');
+  return tokenStorage.get();
 }
 
 export function logout() {
-  localStorage.removeItem('auth_token');
+  tokenStorage.clear();
 }

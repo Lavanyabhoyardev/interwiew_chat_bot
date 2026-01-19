@@ -65,6 +65,14 @@ async function message(req, res) {
       return res.status(400).json({ success: false, error: 'Message is required' });
     }
 
+    if (req.user?.hasCredits && !req.user.hasCredits(1)) {
+      return res.status(402).json({
+        success: false,
+        message: 'Insufficient credits. Please purchase more credits to continue.',
+        credits: req.user.credits
+      });
+    }
+
     // Check cache first
     const cacheKey = `${userMessage.toLowerCase().trim().substring(0, 100)}`;
     const cached = responseCache.get(cacheKey);
@@ -104,7 +112,19 @@ async function message(req, res) {
     25000);
 
     const content = result.choices?.[0]?.message?.content || fallback();
-    res.json({ success: true, response: ensureMarkdown(formatInterviewAnswer(content)), timestamp: new Date().toISOString() });
+    
+    // Deduct credit after successful response
+    if (req.user && req.user.deductCredits) {
+      await req.user.deductCredits(1);
+      logger.info(`Credit deducted for user: ${req.user.email}, remaining: ${req.user.credits}`);
+    }
+    
+    res.json({ 
+      success: true, 
+      response: ensureMarkdown(formatInterviewAnswer(content)), 
+      timestamp: new Date().toISOString(),
+      creditsRemaining: req.user?.credits ?? null
+    });
   } catch (err) {
     logger.error('Error in message:', err);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -114,6 +134,14 @@ async function message(req, res) {
 async function explain(req, res) {
   const { topic, level = 'beginner', history = [] } = req.body || {};
   if (!topic || !topic.trim()) throw new ApiError(400, 'Topic is required');
+
+  if (req.user?.hasCredits && !req.user.hasCredits(1)) {
+    return res.status(402).json({
+      success: false,
+      message: 'Insufficient credits. Please purchase more credits to continue.',
+      credits: req.user.credits
+    });
+  }
 
   // Enforce topic scope
   const allowed = await enhancedAI.checkIfInterviewRelated(topic);
@@ -134,12 +162,33 @@ async function explain(req, res) {
   25000);
 
   const content = result.choices?.[0]?.message?.content || fallback();
-  res.json({ success: true, explanation: ensureMarkdown(formatInterviewAnswer(content)), topic, level, timestamp: new Date().toISOString() });
+  
+  // Deduct credit after successful response
+  if (req.user && req.user.deductCredits) {
+    await req.user.deductCredits(1);
+  }
+  
+  res.json({ 
+    success: true, 
+    explanation: ensureMarkdown(formatInterviewAnswer(content)), 
+    topic, 
+    level, 
+    timestamp: new Date().toISOString(),
+    creditsRemaining: req.user?.credits ?? null
+  });
 }
 
 async function ask(req, res) {
   const { question, history = [], domain = null, level = 'mid', resumeText = null } = req.body || {};
   if (!question || !question.trim()) throw new ApiError(400, 'Question is required');
+
+  if (req.user?.hasCredits && !req.user.hasCredits(1)) {
+    return res.status(402).json({
+      success: false,
+      message: 'Insufficient credits. Please purchase more credits to continue.',
+      credits: req.user.credits
+    });
+  }
 
   // Quick intent detection: requests like "give questions on python" or single tech tokens
   const intent = parseQuestionIntent(question);
@@ -170,16 +219,39 @@ async function ask(req, res) {
       }),
     25000);
     const content = result.choices?.[0]?.message?.content || fallback();
-    return res.json({ success: true, response: ensureMarkdown(formatInterviewAnswer(content)), question, timestamp: new Date().toISOString() });
+    if (req.user && req.user.deductCredits) {
+      await req.user.deductCredits(1);
+    }
+    return res.json({ success: true, response: ensureMarkdown(formatInterviewAnswer(content)), question, timestamp: new Date().toISOString(), creditsRemaining: req.user?.credits ?? null });
   }
 
   const response = await enhancedAI.generateContextualChatResponse(question, domain, level, history);
-  res.json({ success: true, response: ensureMarkdown(formatInterviewAnswer(response)), question, timestamp: new Date().toISOString() });
+  
+  // Deduct credit after successful response
+  if (req.user && req.user.deductCredits) {
+    await req.user.deductCredits(1);
+  }
+  
+  res.json({ 
+    success: true, 
+    response: ensureMarkdown(formatInterviewAnswer(response)), 
+    question, 
+    timestamp: new Date().toISOString(),
+    creditsRemaining: req.user?.credits ?? null
+  });
 }
 
 async function help(req, res) {
   const { question, language, difficulty = 'intermediate', history = [] } = req.body || {};
   if (!question || !question.trim()) throw new ApiError(400, 'Question is required');
+
+  if (req.user?.hasCredits && !req.user.hasCredits(1)) {
+    return res.status(402).json({
+      success: false,
+      message: 'Insufficient credits. Please purchase more credits to continue.',
+      credits: req.user.credits
+    });
+  }
 
   // Enforce topic scope
   const allowed = await enhancedAI.checkIfInterviewRelated(question);
@@ -201,13 +273,32 @@ async function help(req, res) {
   25000);
 
   const helpText = result.choices?.[0]?.message?.content || fallback();
-  res.json({ success: true, help: ensureMarkdown(formatInterviewAnswer(helpText)), question, language, difficulty, timestamp: new Date().toISOString() });
+  if (req.user && req.user.deductCredits) {
+    await req.user.deductCredits(1);
+  }
+  res.json({ success: true, help: ensureMarkdown(formatInterviewAnswer(helpText)), question, language, difficulty, timestamp: new Date().toISOString(), creditsRemaining: req.user?.credits ?? null });
 }
 
 // Streaming using SSE (same endpoint signature). We keep legacy SSE contract.
 async function stream(req, res) {
-  const { question } = req.query;
+  const { question, history: historyParam } = req.query;
   if (!question || !question.trim()) throw new ApiError(400, 'Question is required');
+
+  if (req.user?.hasCredits && !req.user.hasCredits(1)) {
+    res.write(`data: ${JSON.stringify({ type: 'error', message: 'Insufficient credits. Please purchase more credits to continue.' })}\n\n`);
+    res.write('data: {"type":"done"}\n\n');
+    return res.end();
+  }
+
+  // Parse history from query params if provided
+  let history = [];
+  if (historyParam) {
+    try {
+      history = JSON.parse(historyParam);
+    } catch (e) {
+      logger.warn('Failed to parse history from query params:', e);
+    }
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -227,10 +318,9 @@ async function stream(req, res) {
 
     // Real-time AI prompt for interview/career/tech
     const systemPrompt = `You are HireMate, a professional Tech Interview Assistant.\n\nFORMAT RULES (strict):\n- Use ### for headings only\n- Use - for bullet points only\n- Use **bold** sparingly and only when necessary\n- Never repeat words, phrases, or Markdown symbols\n- Remove any duplicated tokens or corrupted formatting\n- Each section must contain unique information\n\nGuidelines:\n- Be concise and clear\n- Provide actionable advice\n- Focus on practical interview and career preparation\n- Internally rewrite and clean the answer before returning it\n- Do NOT echo the user's message; always provide a helpful, original answer.`;
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: question }
-    ];
+    
+    // Build messages with history for context
+    const messages = buildMessagesFromHistory(systemPrompt, history, question);
 
     const stream = await aiService.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
@@ -246,6 +336,13 @@ async function stream(req, res) {
       const content = chunk.choices?.[0]?.delta?.content;
       if (content) res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
     }
+    
+    // Deduct credit after successful streaming
+    if (req.user && req.user.deductCredits) {
+      await req.user.deductCredits(1);
+      logger.info(`Credit deducted for streaming user: ${req.user.email}, remaining: ${req.user.credits}`);
+    }
+    
   } catch (err) {
     logger.error('SSE stream error:', err);
     res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate response' })}\n\n`);

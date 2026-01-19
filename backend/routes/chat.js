@@ -11,27 +11,27 @@ const router = express.Router();
 
 // @route   POST /api/chat/message
 // @desc    Send a general chat message to AI
-// @access  Public (with optional auth for enhanced features)
+// @access  Public (credits enforced only if authenticated)
 router.post('/message', optionalAuth, asyncHandler(chatController.message));
 
 // @route   POST /api/chat/explain
 // @desc    Get detailed explanation about a topic
-// @access  Public
+// @access  Public (credits enforced only if authenticated)
 router.post('/explain', optionalAuth, asyncHandler(chatController.explain));
 
 // @route   POST /api/chat/ask
 // @desc    Smart AI response that adapts to question type
-// @access  Public
+// @access  Public (credits enforced only if authenticated)
 router.post('/ask', optionalAuth, asyncHandler(chatController.ask));
 
 // @route   GET /api/chat/stream
 // @desc    Stream AI response using Server-Sent Events
-// @access  Public
+// @access  Public (credits enforced only if authenticated)
 router.get('/stream', optionalAuth, asyncHandler(chatController.stream));
 
 // @route   POST /api/chat/help
 // @desc    Get help with coding or technical questions
-// @access  Public
+// @access  Public (credits enforced only if authenticated)
 router.post('/help', optionalAuth, asyncHandler(chatController.help));
 
 module.exports = router;

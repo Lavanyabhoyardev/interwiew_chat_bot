@@ -2,6 +2,7 @@
 // Updated to route all AI calls through the backend so no API keys are exposed in the browser.
 
 import { API_BASE } from './base.js';
+import { fetchJson, tokenStorage, authHeaders } from './http.js';
 
 class ChatAPI {
   constructor() {
@@ -24,7 +25,7 @@ class ChatAPI {
         timestamp: new Date()
       });
 
-      const token = localStorage.getItem('hiremate_token');
+      const token = tokenStorage.get();
       let retried = false;
       let fullResponse = '';
 
@@ -32,6 +33,12 @@ class ChatAPI {
         const url = new URL(`${baseUrl}/chat/stream`);
         url.searchParams.set('question', message);
         if (token) url.searchParams.set('token', token);
+        
+        // Send conversation history (last 5 messages to avoid URL length issues)
+        const recentHistory = this.conversationState.conversationHistory.slice(-5);
+        if (recentHistory.length > 0) {
+          url.searchParams.set('history', JSON.stringify(recentHistory));
+        }
 
         const es = new EventSource(url.toString());
 
@@ -111,47 +118,45 @@ class ChatAPI {
 
       // Use backend smart chat endpoint to generate the response (no client-side keys)
       const endpoint = `${this.backendURL}/chat/ask`;
-      let res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // If you later add auth, include Authorization header from localStorage token here
-          ...(localStorage.getItem('hiremate_token')
-            ? { Authorization: `Bearer ${localStorage.getItem('hiremate_token')}` }
-            : {})
-        },
-          body: JSON.stringify({ question: message })
-      });
-
-      if (!res.ok) {
+      let data;
+      try {
+        // Send recent conversation history for context
+        const recentHistory = this.conversationState.conversationHistory.slice(-10).map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }));
+        
+        data = await fetchJson(endpoint, {
+          method: 'POST',
+          headers: {
+            ...authHeaders()
+          },
+          body: { 
+            question: message,
+            history: recentHistory
+          }
+        });
+      } catch (err) {
         // Localhost fallback for 5001/5000
         const isLocal = /http:\/\/(localhost|127\.0\.0\.1):5\d{3}\/api/.test(this.backendURL);
-        if (isLocal) {
-          const altBase = this.backendURL
-            .replace('http://localhost:5001', 'http://localhost:5000')
-            .replace('http://127.0.0.1:5001', 'http://127.0.0.1:5000')
-            .replace('http://localhost:5000', 'http://localhost:5001')
-            .replace('http://127.0.0.1:5000', 'http://127.0.0.1:5001');
-          if (altBase !== this.backendURL) {
-            res = await fetch(`${altBase}/chat/ask`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(localStorage.getItem('hiremate_token')
-                  ? { Authorization: `Bearer ${localStorage.getItem('hiremate_token')}` }
-                  : {})
-              },
-                body: JSON.stringify({ question: message })
-            });
-          }
-        }
-      }
+        if (!isLocal) throw err;
 
-      if (!res.ok) {
-        throw new Error(`Backend error: ${res.status}`);
-      }
+        const altBase = this.backendURL
+          .replace('http://localhost:5001', 'http://localhost:5000')
+          .replace('http://127.0.0.1:5001', 'http://127.0.0.1:5000')
+          .replace('http://localhost:5000', 'http://localhost:5001')
+          .replace('http://127.0.0.1:5000', 'http://127.0.0.1:5001');
 
-      const data = await res.json();
+        if (altBase === this.backendURL) throw err;
+
+        data = await fetchJson(`${altBase}/chat/ask`, {
+          method: 'POST',
+          headers: {
+            ...authHeaders()
+          },
+          body: { question: message }
+        });
+      }
       const aiResponse = data.response || data.message || 'I had trouble processing that. Please try again.';
 
       this.conversationState.conversationState;

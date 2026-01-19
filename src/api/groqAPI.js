@@ -1,4 +1,5 @@
 import { API_BASE } from './base';
+import { fetchJson, authHeaders } from './http.js';
 
 class GroqAPI {
   constructor() {
@@ -10,29 +11,20 @@ class GroqAPI {
      ========================================================= */
   async chat(messages) {
     try {
-      const token = localStorage.getItem('hiremate_token');
-
-      const response = await fetch(`${this.baseURL}/chat/message`, {
+      // Expected backend response:
+      // { success: true, response: "AI text" }
+      return await fetchJson(`${this.baseURL}/chat/message`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` })
+          ...authHeaders()
         },
-        body: JSON.stringify({
+        body: {
           // last user message
           message: messages[messages.length - 1].content,
           // previous conversation as history
           history: messages.slice(0, -1)
-        })
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(`Chat API failed with status ${response.status}`);
-      }
-
-      // Expected backend response:
-      // { success: true, response: "AI text" }
-      return await response.json();
     } catch (error) {
       console.error('Error in GroqAPI.chat:', error);
       throw error;
@@ -44,12 +36,11 @@ class GroqAPI {
      ========================================================= */
   async streamChat(messages, onChunk, onComplete, onError) {
     try {
-      const token = localStorage.getItem('hiremate_token');
       const response = await fetch(`${this.baseURL}/groq/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { Authorization: `Bearer ${token}` })
+          ...authHeaders()
         },
         body: JSON.stringify({ messages })
       });
@@ -120,9 +111,8 @@ class GroqAPI {
       formData.append('jobRole', jobRole);
     }
 
-    const token = localStorage.getItem('hiremate_token');
     const headers = {
-      ...(token && { Authorization: `Bearer ${token}` })
+      ...authHeaders()
     };
 
     const response = await fetch(`${this.baseURL}/groq/questions`, {

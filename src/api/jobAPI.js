@@ -115,6 +115,8 @@
 // jobAPI.js
 // Frontend API for fetching job suggestions from your backend
 
+import { fetchJson, tokenStorage, authHeaders } from './http.js';
+
 export async function getJobSuggestions(tokenOrQuery, limitOrPage = 10, queryOrNumPages = '') {
   try {
     // Handle both old and new function signatures for backward compatibility
@@ -137,7 +139,7 @@ export async function getJobSuggestions(tokenOrQuery, limitOrPage = 10, queryOrN
       // Old signature: getJobSuggestions(jobTitle, page, numPages)
       query = firstParamStr || 'software engineer';
       limit = Number(limitOrPage) || 10;
-      token = localStorage.getItem('hiremate_token') || '';
+      token = tokenStorage.get() || '';
     } else {
       // New signature: getJobSuggestions(token, limit, query)
       token = firstParamStr;
@@ -153,28 +155,12 @@ export async function getJobSuggestions(tokenOrQuery, limitOrPage = 10, queryOrN
       params.append('query', queryString);
     }
 
-    // Build headers - include token if available, but don't block request
-    const headers = {
-      "Content-Type": "application/json"
-    };
-    
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`/api/jobs/suggestions?${params.toString()}`, {
-      method: "GET",
-      headers: headers
+    const data = await fetchJson(`/api/jobs/suggestions?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        ...authHeaders(token)
+      }
     });
-
-    if (!response.ok) {
-      return {
-        success: false,
-        message: "Failed to fetch job suggestions"
-      };
-    }
-
-    const data = await response.json();
 
     // Always return a valid object to avoid `undefined.success` errors
     return {

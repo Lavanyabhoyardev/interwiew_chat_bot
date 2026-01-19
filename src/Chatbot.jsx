@@ -5,6 +5,8 @@ import MarkdownView from './components/MarkdownView';
 import Orb from './components/Orb';
 import { getChatResponseStreaming, getChatResponse } from './api/chatAPI';
 import { useChat } from './contexts/ChatContext';
+import { useAuth } from './contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import './chatbot.css';
 
 // Safely get the chat context with a fallback
@@ -23,6 +25,7 @@ const useSafeChat = () => {
 export default function Chatbot() {
   // Get chat context with safe fallback
   const { messages: contextMessages, sendMessage } = useSafeChat();
+  const { user, reload: reloadUser } = useAuth();
   
   // Local state for UI
   const [localMessages, setLocalMessages] = useState([
@@ -39,8 +42,8 @@ export default function Chatbot() {
     : localMessages;
   // State for input field
   const [input, setInput] = useState("");
-  // State for user credits (e.g., 5 free questions)
-  const [credits, setCredits] = useState(100);
+  // Use real user credits from auth context
+  const credits = user?.credits ?? 0;
   // Example options for user to select
   const [options] = useState([
     "Tell me about yourself",
@@ -89,7 +92,6 @@ export default function Chatbot() {
     }
     
     setInput("");
-    setCredits(c => c - 1);
     setIsTyping(true);
 
     // Add placeholder bot message
@@ -124,11 +126,43 @@ export default function Chatbot() {
             setLocalMessages(prev => updateLastMessage(prev));
           }
         },
-        // onComplete: streaming finished
-        () => setIsTyping(false),
+        // onComplete: streaming finished, reload user credits
+        async () => {
+          setIsTyping(false);
+          // Reload user data to get updated credit balance
+          if (reloadUser) {
+            await reloadUser();
+          }
+        },
         // onError: handle streaming errors -> fallback to non-streaming
         async (error) => {
           console.error('Streaming error:', error);
+          
+          // Check if it's an insufficient credits error
+          if (error.status === 402 || error.message?.includes('credit')) {
+            const errorMsg = error.message || 'Insufficient credits. Purchase more to continue.';
+            const updateMessage = (prev) => {
+              const lastIdx = prev.length - 1;
+              if (lastIdx < 0) return prev;
+              const updated = [...prev];
+              updated[lastIdx] = { 
+                ...updated[lastIdx],
+                text: `⚠️ ${errorMsg}`,
+                sender: 'bot' 
+              };
+              return updated;
+            };
+            
+            if (typeof sendMessage === 'function') {
+              setMessages(prev => updateMessage(prev));
+            } else {
+              setLocalMessages(prev => updateMessage(prev));
+            }
+            setIsTyping(false);
+            if (reloadUser) await reloadUser();
+            return;
+          }
+          
           try {
             const fallback = await getChatResponse(value, undefined);
             const updateMessage = (prev) => {
@@ -149,6 +183,7 @@ export default function Chatbot() {
             } else {
               setLocalMessages(prev => updateMessage(prev));
             }
+            if (reloadUser) await reloadUser();
           } catch (err) {
             console.error('Fallback error:', err);
             const errorMessage = { 
@@ -310,8 +345,17 @@ export default function Chatbot() {
         {/* Payment/Upgrade prompt if out of credits */}
         {credits <= 0 && (
           <div className="credits-warning-dark">
-            You have used all your free credits.<br />
-            <span className="upgrade-text">Please upgrade to continue.</span>
+            You have used all your credits.<br />
+            <Link to="/pricing" className="upgrade-text" style={{ color: '#6366f1', textDecoration: 'underline' }}>
+              Buy more credits to continue
+            </Link>
+          </div>
+        )}
+        
+        {/* Low credit warning */}
+        {credits > 0 && credits <= 10 && (
+          <div className="credits-warning-dark" style={{ background: 'rgba(251, 191, 36, 0.1)', borderColor: 'rgba(251, 191, 36, 0.3)' }}>
+            ⚠️ Low credits: {credits} remaining. <Link to="/pricing" style={{ color: '#6366f1', textDecoration: 'underline' }}>Get more</Link>
           </div>
         )}
       </div>

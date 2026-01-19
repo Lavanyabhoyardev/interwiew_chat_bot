@@ -5,6 +5,7 @@ const {
   validateCreateSubscription
 } = require('../middleware/validation');
 const paymentService = require('../services/paymentService');
+const razorpayService = require('../services/razorpayService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -81,6 +82,68 @@ router.post('/create-payment', authenticate, validateCreatePayment, async (req, 
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to create payment'
+    });
+  }
+});
+
+// @route   POST /api/payments/razorpay/order
+// @desc    Create Razorpay order for credit purchase
+// @access  Private
+router.post('/razorpay/order', authenticate, validateCreatePayment, async (req, res) => {
+  try {
+    const { packageType } = req.body;
+    const userId = req.user.id;
+
+    const order = await razorpayService.createOrder(userId, packageType);
+
+    res.json({
+      success: true,
+      message: 'Razorpay order created successfully',
+      order,
+      keyId: razorpayService.getKeyId()
+    });
+  } catch (error) {
+    logger.error('Razorpay order error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create Razorpay order'
+    });
+  }
+});
+
+// @route   POST /api/payments/razorpay/verify
+// @desc    Verify Razorpay payment and add credits
+// @access  Private
+router.post('/razorpay/verify', authenticate, async (req, res) => {
+  try {
+    const { orderId, paymentId, signature, packageType } = req.body;
+    const userId = req.user.id;
+
+    if (!orderId || !paymentId || !signature || !packageType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing payment verification details'
+      });
+    }
+
+    const result = await razorpayService.verifyAndApplyCredits({
+      userId,
+      orderId,
+      paymentId,
+      signature,
+      packageType
+    });
+
+    res.json({
+      success: true,
+      message: 'Payment verified and credits added',
+      result
+    });
+  } catch (error) {
+    logger.error('Razorpay verification error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Payment verification failed'
     });
   }
 });

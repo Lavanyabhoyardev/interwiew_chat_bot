@@ -152,7 +152,7 @@ const ResumeAnalyzer = () => {
       </div>
 
       {/* Theme Toggle Button */}
-      <div className="fixed top-24 right-4 sm:right-6 z-50">
+      <div className="fixed top-36 left-4 sm:left-6 z-50">
         <button
           onClick={toggleTheme}
           className={`p-3 rounded-full shadow-xl backdrop-blur-lg transition-all duration-300 hover:scale-110 ${
