@@ -73,14 +73,26 @@ router.post(
     const jobDescription = req.body.jobDescription || '';
 
     // Analyze with Groq AI
-    const atsController = require('../controllers/atsController');
-    const atsAnalysis = await atsController.analyzeATSScore(resumeText, jobDescription);
+    try {
+      const atsController = require('../controllers/atsController');
+      const atsAnalysis = await atsController.analyzeATSScore(resumeText, jobDescription);
 
-    res.json({
-      success: true,
-      data: atsAnalysis,
-      message: 'ATS analysis completed successfully'
-    });
+      res.json({
+        success: true,
+        data: atsAnalysis,
+        message: 'ATS analysis completed successfully'
+      });
+    } catch (aiError) {
+      logger.error('ATS analysis failed:', aiError && aiError.message ? aiError.message : aiError);
+      const status = aiError && aiError.status ? aiError.status : 502;
+      res.status(status).json({
+        success: false,
+        message: 'ATS analysis failed',
+        error: process.env.NODE_ENV === 'development'
+          ? (aiError && aiError.message ? aiError.message : 'Unknown error')
+          : 'AI service unavailable'
+      });
+    }
   })
 );
 

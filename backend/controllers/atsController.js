@@ -11,6 +11,7 @@ const logger = require('../utils/logger');
  * @returns {Promise<Object>} ATS score breakdown
  */
 async function analyzeATSScore(resumeText, jobDescription = '') {
+  const allowMock = process.env.ALLOW_MOCK_AI === 'true' || process.env.NODE_ENV === 'development';
   try {
     const prompt = `Analyze this resume for ATS (Applicant Tracking System) compatibility and provide a comprehensive analysis in well-formatted Markdown.
 
@@ -93,7 +94,15 @@ Format your response using proper Markdown with headings, bullet points, and bol
     return content;
   } catch (error) {
     logger.error('ATS analysis error:', error);
-    // Fallback formatted response if AI fails
+
+    if (!allowMock) {
+      const message = error && error.message ? error.message : 'AI service unavailable';
+      const err = new Error(`ATS analysis failed: ${message}`);
+      err.status = 502;
+      throw err;
+    }
+
+    // Fallback formatted response if AI fails (dev/mock only)
     return `# ATS Analysis Error
 
 ## 📊 ATS Score Overview
