@@ -62,18 +62,11 @@ const ResumeAnalyzer = () => {
       });
       
       if (!response.ok) {
-        let errorPayload = {};
-        try {
-          errorPayload = await response.json();
-        } catch {
-          const errorText = await response.text();
-          console.error('Response error:', errorText);
-        }
-        const message = errorPayload.message || `Analysis failed: ${response.status} ${response.statusText}`;
-        const details = errorPayload.error ? ` (${errorPayload.error})` : '';
-        throw new Error(`${message}${details}`);
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        throw new Error(`Analysis failed: ${response.status} ${response.statusText}`);
       }
-
+      
       const result = await response.json();
       
       if (result.data && typeof result.data === 'string' && result.data.trim()) {
